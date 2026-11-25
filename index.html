@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFA to DFA Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/css/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 40" aria-hidden="true">
+        <path class="ln" d="M17 20 H47"/><path class="ln" d="M42 15 L47 20 L42 25"/>
+        <circle class="dot a" cx="12" cy="20" r="9"/><circle class="dot b" cx="52" cy="20" r="9"/><circle class="dot b" cx="52" cy="20" r="5.5" style="fill:none"/>
+      </svg>
+      <div>
+        <h1>NFA to DFA Simulator</h1>
+        <p class="sub">Build an NFA, convert it with the subset construction, compare it with the minimal DFA, then test strings.</p>
+      </div>
+    </div>
+    <div class="tools">
+      <select id="preset" class="btn" aria-label="Load an example automaton"></select>
+      <button class="btn" id="btnClear" type="button">New blank NFA</button>
+      <button class="btn icon" id="btnTheme" type="button" aria-label="Toggle light or dark theme" title="Toggle theme"><svg class="themeico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="nav" id="nav" role="tablist" aria-label="Screens">
+    <button class="nv" role="tab" data-view="define" aria-selected="true"><span class="num">1</span><span><b>Define NFA</b><small>Enter states and moves</small></span></button>
+    <button class="nv" role="tab" data-view="convert" aria-selected="false"><span class="num">2</span><span><b>Convert</b><small>Subset construction, step by step</small></span></button>
+    <button class="nv" role="tab" data-view="compare" aria-selected="false"><span class="num">3</span><span><b>Compare</b><small>NFA vs DFA vs minimal DFA</small></span></button>
+    <button class="nv" role="tab" data-view="test" aria-selected="false"><span class="num">4</span><span><b>Test strings</b><small>Run input on all three</small></span></button>
+  </nav>
+  <div class="pipe" id="pipe" aria-live="polite"></div>
+
+  <!-- 1. DEFINE -->
+  <main class="view" id="v-define">
+    <div class="g2">
+      <section class="card" aria-labelledby="hEd">
+        <div class="card-head"><div><h2 id="hEd">NFA definition</h2><p class="hint">Type target states in the cells, separated by commas.</p></div></div>
+        <div class="chips" id="alphaChips"></div>
+        <div class="tblwrap"><table class="ed" id="edTable"></table></div>
+        <div class="add">
+          <button class="btn sm" id="btnAddState" type="button">+ State</button>
+          <input class="field" id="newSym" maxlength="1" placeholder="symbol" aria-label="New alphabet symbol">
+          <button class="btn sm" id="btnAddSym" type="button">+ Symbol</button>
+          <span style="flex:1"></span>
+          <button class="btn sm" id="btnCopyNfa" type="button">Copy as JSON</button>
+          <button class="btn sm" id="btnLoadNfa" type="button">Load JSON…</button>
+        </div>
+        <p class="note" id="edNote">Use the ε column for epsilon moves. Pick the start state with the radio button and mark accepting states with the checkbox.</p>
+        <div id="jsonWrap" hidden>
+          <textarea class="jsonbox" id="jsonBox" spellcheck="false" aria-label="NFA as JSON"></textarea>
+          <div class="add" style="margin-top:8px"><button class="btn sm primary" id="btnApplyJson" type="button">Load this NFA</button><button class="btn sm" id="btnCloseJson" type="button">Close</button></div>
+        </div>
+      </section>
+      <section class="card m-nfa" aria-labelledby="hDn">
+        <div class="card-head"><div><h2 id="hDn"><span class="dotm nfa"></span>Your NFA</h2><p class="hint">Drag states to rearrange. Dashed edges are ε-moves.</p></div><button class="btn sm btnLayout" type="button">Auto-layout</button></div>
+        <div class="stage"><svg id="svgDefN" role="img" aria-label="NFA diagram"></svg></div>
+        <div class="legend"><span><i></i>state</span><span><i class="acc"></i>accepting</span><span>→ start</span></div>
+        <div class="cta"><span class="note" style="margin:0">Ready? The next screen builds the DFA one step at a time.</span><button class="btn primary pulse" id="goConvert" type="button">Convert to DFA →</button></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 2. CONVERT -->
+  <main class="view" id="v-convert" hidden>
+    <section class="card now" aria-labelledby="hNow">
+      <div class="now-top">
+        <h2 id="hNow" class="sr" style="position:absolute;left:-9999px">Current conversion step</h2>
+        <div class="ctrl" style="flex:1">
+          <button class="btn icon" id="bFirst" type="button" title="Back to start" aria-label="Back to start">⏮</button>
+          <button class="btn icon" id="bPrev" type="button" title="Previous step" aria-label="Previous step">◀</button>
+          <button class="btn primary" id="bPlay" type="button" aria-label="Play" style="min-width:92px">▶ Play</button>
+          <button class="btn icon" id="bNext" type="button" title="Next step" aria-label="Next step">▶|</button>
+          <button class="btn icon" id="bLast" type="button" title="Jump to the finished DFA" aria-label="Jump to the end">⏭</button>
+          <div class="grow bar" aria-hidden="true"><i id="barFill"></i></div>
+          <span class="pos" id="posTxt">0 / 0</span>
+          <label>Speed <input type="range" id="speed" min="1" max="5" value="3" aria-label="Animation speed"></label>
+        </div>
+      </div>
+      <div id="nowBody" aria-live="polite"></div>
+      <div class="kbd">Tip: use <kbd>←</kbd> <kbd>→</kbd> to step.</div>
+    </section>
+
+    <div class="g-main">
+      <div class="stack">
+      <section class="card m-dfa" aria-labelledby="hCv">
+        <div class="card-head">
+          <div><h2 id="hCv"><span class="dotm dfa"></span>DFA being built</h2><p class="hint">Teal state is the one being processed.</p></div>
+          <div class="tabs" id="cvTabs" role="tablist" aria-label="Which diagram to show">
+            <button class="tab" role="tab" data-cv="dfa" aria-selected="true">DFA</button>
+            <button class="tab" role="tab" data-cv="nfa" aria-selected="false">NFA (source)</button>
+          </div>
+        </div>
+        <div class="stage" id="paneCvD"><svg id="svgCvD" role="img" aria-label="DFA under construction"></svg></div>
+        <div class="stage" id="paneCvN" hidden><svg id="svgCvN" role="img" aria-label="Source NFA"></svg></div>
+        <div class="legend">
+          <span><i></i>state</span><span><i class="acc"></i>accepting</span><span><i class="cur"></i>being processed</span>
+          <div class="opts" style="margin-left:auto">
+            <label><input type="checkbox" class="optDead" checked> dead state ∅</label>
+            <label><input type="checkbox" class="optSets" checked> NFA sets</label>
+            <button class="btn sm btnLayout" type="button">Auto-layout</button>
+          </div>
+        </div>
+      </section>
+        <section class="card" aria-labelledby="hTb">
+          <div class="card-head">
+            <h2 id="hTb">DFA transition table</h2>
+            <div class="sbtns"><button class="btn sm" id="btnCopyTbl" type="button">Copy table</button><button class="btn sm" id="btnCopyJson" type="button">Copy JSON</button></div>
+          </div>
+          <div class="tblwrap" style="margin-top:0"><table class="dt" id="dfaTable"></table></div>
+          <p class="note" id="tblNote"></p>
+          <textarea class="exportbox" id="exportBox" hidden readonly aria-label="Exported text"></textarea>
+        </section>
+      </div>
+      <div class="stack">
+        <section class="card" aria-labelledby="hLog">
+          <div class="card-head"><div><h2 id="hLog">Step log</h2><p class="hint">δ(S, a) = ε-closure(move(S, a))</p></div></div>
+          <div class="worklist" id="worklist"></div>
+          <ol class="log" id="log"></ol>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- 3. COMPARE -->
+  <main class="view" id="v-compare" hidden>
+    <section class="card sum">
+      <p id="cmpSummary"></p>
+      <div class="opts">
+        <label><input type="checkbox" class="optDead" checked> dead state ∅</label>
+        <label><input type="checkbox" class="optSets" checked> show sets</label>
+        <button class="btn sm btnLayout" type="button">Auto-layout</button>
+      </div>
+    </section>
+    <div class="g3">
+      <section class="card m-nfa"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm nfa"></span>NFA</h2><p class="hint">The machine you defined</p></div></div>
+        <div class="stage sm"><svg id="svgCmpN" role="img" aria-label="NFA"></svg></div><p class="cap" id="capN"></p></section>
+      <section class="card m-dfa"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm dfa"></span>DFA</h2><p class="hint">After subset construction</p></div></div>
+        <div class="stage sm"><svg id="svgCmpD" role="img" aria-label="DFA"></svg></div><p class="cap" id="capD"></p></section>
+      <section class="card m-min"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm min"></span>Minimal DFA</h2><p class="hint">Equivalent states merged</p></div></div>
+        <div class="stage sm"><svg id="svgCmpM" role="img" aria-label="Minimal DFA"></svg></div><p class="cap" id="capM"></p></section>
+    </div>
+    <section class="card">
+      <div class="card-head"><div><h2>State mapping</h2><p class="hint">Which NFA states each DFA state stands for, and which minimal state it merges into.</p></div></div>
+      <div class="tblwrap" style="margin-top:0"><table class="dt mt" id="mapTable"></table></div>
+    </section>
+  </main>
+
+  <!-- 4. TEST -->
+  <main class="view" id="v-test" hidden>
+    <section class="card" aria-labelledby="hTest">
+      <div class="card-head"><div><h2 id="hTest">Test a string</h2><p class="hint">Gold states show where each machine is after the symbols read so far.</p></div></div>
+      <div class="testbar">
+        <input class="field" id="testStr" placeholder="type a string, e.g. aab (empty means ε)" autocomplete="off" spellcheck="false" aria-label="Input string">
+        <button class="btn primary" id="btnRun" type="button">▶ Run</button>
+        <button class="btn icon" id="tPrev" type="button" aria-label="Previous symbol" title="Previous symbol">◀</button>
+        <button class="btn icon" id="tNext" type="button" aria-label="Next symbol" title="Next symbol">▶|</button>
+      </div>
+      <div class="quick" id="quick"></div>
+      <p class="note" id="testNote"></p>
+      <div class="vrow" id="verdictRow" aria-live="polite"></div>
+    </section>
+    <div class="g3">
+      <section class="card m-nfa"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm nfa"></span>NFA</h2></div><div class="stage sm"><svg id="svgTsN" role="img" aria-label="NFA with active states"></svg></div></section>
+      <section class="card m-dfa"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm dfa"></span>DFA</h2></div><div class="stage sm"><svg id="svgTsD" role="img" aria-label="DFA with active state"></svg></div></section>
+      <section class="card m-min"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm min"></span>Minimal DFA</h2></div><div class="stage sm"><svg id="svgTsM" role="img" aria-label="Minimal DFA with active state"></svg></div></section>
+    </div>
+    <div class="g2">
+      <section class="card"><div class="card-head"><h2>Step-by-step trace</h2></div><div class="tblwrap" style="margin-top:0"><table class="trace" id="trace"></table></div></section>
+      <section class="card prev" id="prev"></section>
+    </div>
+  </main>
+
+  <p class="foot">Subset construction with ε-closures. Minimal DFA by partition refinement. Everything runs in your browser.</p>
+</div>
+
+<script src="src/js/utils.js"></script>
+<script src="src/js/presets.js"></script>
+<script src="src/js/core.js"></script>
+<script src="src/js/graph.js"></script>
+<script src="src/js/app.js"></script>
+</body>
+</html>

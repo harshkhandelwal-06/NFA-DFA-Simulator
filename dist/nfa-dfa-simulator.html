@@ -1,0 +1,1262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFA to DFA Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: header, 4-screen pipeline nav (Define > Convert > Compare > Test), size chips, one screen at a time. Each machine has its own colour: NFA coral, DFA teal, minimal DFA violet. */
+:root{
+  --bg:#edf2f1; --surface:#ffffff; --surface2:#e2eae8; --ink:#12211f; --muted:#587068; --line:#cddad6;
+  --accent:#0d7f86; --accent-soft:#d3eeee; --accent-ink:#ffffff;
+  --nfa:#d9482b; --nfa-soft:#fde3dc; --dfa:#0d7f86; --dfa-soft:#d3eeee; --min:#6a42d4; --min-soft:#e6defa;
+  --hl:#d99a00; --hl-soft:#ffefbd;
+  --ok:#23873f; --ok-soft:#d9f2df; --bad:#c92b57; --bad-soft:#fddfe7;
+  --edge:#6a827c; --dots:#c3d1cd; --shadow:0 1px 2px rgba(18,33,31,.06),0 10px 26px -14px rgba(18,33,31,.22);
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a1412; --surface:#12201d; --surface2:#1a2c28; --ink:#e6f0ee; --muted:#8fa7a2; --line:#27403a;
+  --accent:#3fd0d0; --accent-soft:#12403f; --accent-ink:#06201f;
+  --nfa:#ff8a6b; --nfa-soft:#432019; --dfa:#3fd0d0; --dfa-soft:#12403f; --min:#a98cff; --min-soft:#2b2250;
+  --hl:#ffc233; --hl-soft:#4a3a0b;
+  --ok:#5bd47a; --ok-soft:#15381f; --bad:#ff7a9c; --bad-soft:#4a1a27;
+  --edge:#7f9a94; --dots:#223632; --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 28px -14px rgba(0,0,0,.65);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0a1412; --surface:#12201d; --surface2:#1a2c28; --ink:#e6f0ee; --muted:#8fa7a2; --line:#27403a;
+  --accent:#3fd0d0; --accent-soft:#12403f; --accent-ink:#06201f;
+  --nfa:#ff8a6b; --nfa-soft:#432019; --dfa:#3fd0d0; --dfa-soft:#12403f; --min:#a98cff; --min-soft:#2b2250;
+  --hl:#ffc233; --hl-soft:#4a3a0b;
+  --ok:#5bd47a; --ok-soft:#15381f; --bad:#ff7a9c; --bad-soft:#4a1a27;
+  --edge:#7f9a94; --dots:#223632; --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 28px -14px rgba(0,0,0,.65);
+  color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 48px;display:grid;gap:16px}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code,.mono{font-family:var(--mono)}
+
+/* header */
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.logo{width:64px;height:40px;flex:none}
+.logo .ln{stroke:var(--accent);stroke-width:2;fill:none;stroke-dasharray:60;stroke-dashoffset:60;animation:draw 1.1s .2s ease forwards}
+.logo .dot{fill:var(--surface);stroke:var(--accent);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pop .5s cubic-bezier(.2,1.5,.4,1) both}
+.logo .dot.b{animation-delay:.5s;stroke:var(--min)}
+.logo .dot.a{stroke:var(--nfa)}
+h1{font-size:clamp(22px,3.4vw,31px);font-weight:800;line-height:1.05}
+.sub{color:var(--muted);margin:3px 0 0;font-size:13px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* buttons and fields */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 12px;cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center;justify-content:center;transition:transform .15s,background .15s,border-color .15s,box-shadow .15s}
+.btn:hover{border-color:var(--accent);transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover{box-shadow:0 8px 18px -8px var(--accent)}
+.btn.sm{padding:4px 10px;font-size:12.5px}
+.btn.icon{padding:7px 10px;min-width:38px}
+.btn:disabled{opacity:.4;cursor:default;transform:none;border-color:var(--line);box-shadow:none}
+.btn.pulse{animation:pulse 1.8s ease-in-out infinite}
+.field{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 9px;min-width:0}
+.field:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+
+/* pipeline nav */
+.nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;position:relative}
+.nv{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 14px;cursor:pointer;display:flex;gap:12px;align-items:center;text-align:left;transition:border-color .2s,background .2s,transform .15s}
+.nv:hover{border-color:var(--accent);transform:translateY(-1px)}
+.nv b{display:block;font:700 15px var(--display)}
+.nv small{display:block;color:var(--muted);font-size:12px;line-height:1.3}
+.nv .num{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;font:700 13px var(--display);background:var(--surface2);color:var(--muted);transition:background .2s,color .2s}
+.nv[aria-selected=true]{border-color:var(--accent);background:var(--accent-soft)}
+.nv[aria-selected=true] .num{background:var(--accent);color:var(--accent-ink)}
+.nv[aria-selected=true] small{color:var(--ink)}
+
+/* size chips */
+.pipe{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.sz{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 12px 3px 8px;animation:pop .45s cubic-bezier(.2,1.4,.4,1) both}
+.sz i{width:10px;height:10px;border-radius:50%}
+.sz b{font:700 15px var(--display);color:var(--ink);font-variant-numeric:tabular-nums}
+.sz.nfa i{background:var(--nfa)}.sz.dfa i{background:var(--dfa)}.sz.min i{background:var(--min)}
+.pipe .ar{color:var(--muted)}
+
+/* views and cards */
+.view{display:grid;gap:16px;animation:viewin .4s cubic-bezier(.2,.8,.2,1) both}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px;min-width:0}
+.card.m-nfa{border-top:3px solid var(--nfa)}.card.m-dfa{border-top:3px solid var(--dfa)}.card.m-min{border-top:3px solid var(--min)}
+.card h2{font-size:17px;font-weight:700}
+.card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.hint{font-size:12.5px;color:var(--muted);margin:2px 0 0;font-weight:400;font-family:var(--body)}
+.g2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.g-main{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}
+.stack{display:grid;gap:16px;min-width:0}
+.dotm{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+.dotm.nfa{background:var(--nfa)}.dotm.dfa{background:var(--dfa)}.dotm.min{background:var(--min)}
+
+/* editor */
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface2);border-radius:999px;padding:2px 4px 2px 10px;font:500 13px var(--mono)}
+.chip button{border:0;background:none;cursor:pointer;color:var(--muted);border-radius:50%;width:20px;height:20px;line-height:1}
+.chip button:hover{background:var(--bad-soft);color:var(--bad)}
+.tblwrap{overflow-x:auto;margin:12px 0 8px;border:1px solid var(--line);border-radius:10px;max-width:100%}
+table{border-collapse:collapse;width:100%}
+th,td{padding:5px 8px;text-align:left;white-space:nowrap}
+th{font:600 11.5px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--surface2)}
+tbody tr{border-top:1px solid var(--line)}
+.ed input.cell,.ed input.nm{width:100%;min-width:74px;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;font:500 13px var(--mono)}
+.ed input.cell:hover,.ed input.nm:hover{border-color:var(--line)}
+.ed input.cell:focus,.ed input.nm:focus{border-color:var(--accent);background:var(--surface);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.ed input.bad{border-color:var(--bad);background:var(--bad-soft)}
+.ed input.nm{font-weight:600;min-width:58px;max-width:90px}
+.ed input[type=radio],.ed input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+.ed .x{border:0;background:none;color:var(--muted);cursor:pointer;border-radius:6px;padding:2px 7px}
+.ed .x:hover{color:var(--bad);background:var(--bad-soft)}
+.ed .x:disabled{opacity:.3;cursor:default}
+.ed th.eps{color:var(--nfa);text-transform:none;font-size:15px;letter-spacing:0}
+.row-in{animation:rowin .4s both}
+.add{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.add input{width:80px;font-family:var(--mono)}
+.note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.note.warn{color:var(--bad)}
+.shake{animation:shake .35s}
+.jsonbox{width:100%;min-height:120px;margin-top:10px;font:12px var(--mono);border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px;resize:vertical}
+.cta{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+
+/* tabs */
+.tabs{display:inline-flex;background:var(--surface2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.tab{border:0;background:none;padding:5px 12px;border-radius:8px;cursor:pointer;font-weight:500;color:var(--muted);transition:background .2s,color .2s}
+.tab[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+
+/* diagram stage */
+.stage{border:1px solid var(--line);border-radius:12px;background:var(--bg);background-image:radial-gradient(var(--dots) 1px,transparent 1px);background-size:18px 18px;overflow:auto;max-width:100%}
+.stage svg{display:block;width:100%;height:auto;max-height:480px;touch-action:none;user-select:none}
+.stage.sm svg{max-height:320px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px;align-items:center}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--edge);vertical-align:-3px;margin-right:5px;background:var(--surface)}
+.legend i.acc{box-shadow:inset 0 0 0 2px var(--surface),inset 0 0 0 3.5px var(--edge)}
+.legend i.act{border-color:var(--hl);background:var(--hl-soft)}
+.legend i.cur{border-color:var(--accent);background:var(--accent-soft)}
+.opts{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.opts label{display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-size:12.5px}
+.opts input{accent-color:var(--accent)}
+.empty{fill:var(--muted);font:500 15px var(--body)}
+.cap{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+.cap b{color:var(--ink)}
+
+svg .edge path.p{fill:none;stroke:var(--edge);stroke-width:1.8;transition:stroke .25s,stroke-width .25s}
+svg .edge.hot path.p{stroke:var(--accent);stroke-width:3.2}
+svg .edge.enter path.p{stroke-dasharray:1;stroke-dashoffset:1;animation:draw .7s .15s ease forwards}
+svg .edge text{font:500 13px var(--mono);fill:var(--ink);paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round;text-anchor:middle}
+svg .edge.enter text{opacity:0;animation:fade .4s .5s forwards}
+svg .edge.eps text{fill:var(--nfa)}
+svg .edge.eps path.p{stroke-dasharray:5 4}
+svg .edge.eps.enter path.p{stroke-dasharray:1;stroke-dashoffset:1;animation:draw .7s .15s ease forwards}
+svg .node{cursor:grab}
+svg .node:active{cursor:grabbing}
+svg .node .main{fill:var(--surface);stroke:var(--edge);stroke-width:2;transition:fill .3s,stroke .3s}
+svg .node .inner{fill:none;stroke:var(--edge);stroke-width:1.6;transition:stroke .3s}
+svg .node .lbl{font:600 14px var(--mono);fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+svg .node .set{font:400 11px var(--mono);fill:var(--muted);text-anchor:middle;pointer-events:none;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+svg .node.active .main{fill:var(--hl-soft);stroke:var(--hl);stroke-width:3}
+svg .node.active .inner{stroke:var(--hl)}
+svg .node.current .main{fill:var(--accent-soft);stroke:var(--accent);stroke-width:3}
+svg .node.current .inner{stroke:var(--accent)}
+svg .node.dead .main{stroke-dasharray:4 3}
+svg .node .ring{fill:none;stroke:var(--hl);stroke-width:2;opacity:0;transform-box:fill-box;transform-origin:center;animation:ring 1.4s ease-out infinite}
+svg .node.current .ring{stroke:var(--accent)}
+svg .node.enter .body{transform-box:fill-box;transform-origin:center;animation:pop .5s cubic-bezier(.2,1.5,.4,1) both}
+svg .startarrow{stroke:var(--edge);stroke-width:2;fill:none}
+
+/* "what is happening now" panel on the Convert screen */
+.now{display:grid;gap:12px}
+.now-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.now-title{font:700 17px var(--display)}
+.now-title small{font:500 12.5px var(--body);color:var(--muted);margin-left:8px}
+.now-text{margin:0;color:var(--muted);max-width:78ch}
+.now .flow+.now-text{margin-top:12px}
+.themeico{width:18px;height:18px;display:block}
+.flow{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap}
+.fc{border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:6px 12px;display:grid;gap:1px;min-width:92px;animation:rowin .45s both;animation-delay:var(--d,0s)}
+.fc small{font:600 11px var(--body);color:var(--muted)}
+.fc b{font:600 14px var(--mono)}
+.fc span{font:400 12.5px var(--mono);color:var(--muted)}
+.fc.from{border-color:var(--accent);background:var(--accent-soft)}
+.fc.to{border-color:var(--dfa);background:var(--dfa-soft)}
+.fc.to.old{border-color:var(--line);background:var(--surface2)}
+.fc.acc b::after{content:" ✓";color:var(--ok)}
+.fa{display:grid;place-items:center;align-content:center;color:var(--muted);min-width:70px;text-align:center;animation:rowin .45s both;animation-delay:var(--d,0s)}
+.fa small{font-size:11px;line-height:1.2}
+.fa i{font-style:normal;font-size:18px;line-height:1}
+.tag{font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.06em;padding:1px 7px;border-radius:99px;background:var(--ok-soft);color:var(--ok);margin-left:6px;vertical-align:1px}
+.tag.old{background:var(--surface2);color:var(--muted)}
+.tag.dead{background:var(--bad-soft);color:var(--bad)}
+.ctrl{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ctrl .grow{flex:1;min-width:120px}
+.bar{height:7px;border-radius:99px;background:var(--surface2);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .35s}
+.ctrl label{font-size:12px;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.ctrl input[type=range]{accent-color:var(--accent);width:90px}
+.pos{font:500 12.5px var(--mono);color:var(--muted);min-width:64px;text-align:right}
+.kbd{font-size:12px;color:var(--muted)}
+kbd{font:500 11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--surface2)}
+
+/* log */
+.worklist{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.pill{display:inline-block;font:600 12.5px var(--mono);padding:1px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);color:var(--ink)}
+.pill.new{background:var(--dfa-soft);border-color:var(--dfa)}
+.pill.acc{box-shadow:inset 0 0 0 1px var(--ok);border-color:var(--ok)}
+.log{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto;display:grid;gap:6px;scroll-behavior:smooth}
+.lg{border:1px solid var(--line);border-radius:10px;padding:7px 10px;display:grid;gap:2px;background:var(--surface);animation:rowin .4s both}
+.lg.cur{border-color:var(--accent);background:var(--accent-soft)}
+.lg .k{font:600 13px var(--mono)}
+.lg .ch{font:400 12.5px var(--mono);color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.lg .ch b{color:var(--ink);font-family:var(--body);font-weight:600;font-size:12px}
+.lg .ch .st{color:var(--ink)}
+
+/* DFA tables */
+.dt td,.dt th{font-family:var(--mono)}
+.dt th{font-family:var(--body)}
+.dt td.st{font-weight:600}
+.dt td.sets{color:var(--muted);font-size:12.5px}
+.dt tr.flash td{animation:flash 1.2s}
+.dt td.f{animation:flash 1.2s}
+.dt .mark{color:var(--accent);font-weight:700}
+.dt .fin{color:var(--ok);font-weight:700}
+.dt td.blank{color:var(--line)}
+.mt td.mn{color:var(--min);font-weight:600}
+.sbtns{display:flex;gap:6px;flex-wrap:wrap}
+.exportbox{width:100%;margin-top:10px;min-height:110px;font:12px var(--mono);border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px;resize:vertical}
+
+/* compare summary */
+.sum{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.sum p{margin:0;max-width:70ch}
+.sum b{font-family:var(--display)}
+
+/* test */
+.testbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.testbar input.field{flex:1;min-width:150px;font:500 15px var(--mono);letter-spacing:.04em}
+.quick{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;font-size:12.5px;color:var(--muted)}
+.quick button{border:1px solid var(--line);background:var(--surface2);border-radius:7px;padding:1px 9px;font:500 12.5px var(--mono);cursor:pointer}
+.quick button.y{border-color:var(--ok);color:var(--ok)}
+.quick button.n{border-color:var(--bad);color:var(--bad)}
+.quick button:hover{background:var(--surface)}
+.verdict{display:inline-flex;gap:8px;align-items:center;font:700 15px var(--display);padding:5px 14px;border-radius:99px;animation:pop .45s cubic-bezier(.2,1.5,.4,1) both}
+.verdict.ok{background:var(--ok-soft);color:var(--ok)}
+.verdict.no{background:var(--bad-soft);color:var(--bad)}
+.verdict.wait{background:var(--surface2);color:var(--muted)}
+.vrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:12px;min-height:34px}
+.trace tr.on td{background:var(--hl-soft)}
+.trace tr.past td{color:var(--muted)}
+.trace tr{animation:rowin .35s both;animation-delay:calc(var(--i)*40ms)}
+.trace td{font:500 13px var(--mono)}
+.trace td.rd{color:var(--accent);font-weight:700}
+.prev .c{font:500 12.5px var(--mono);padding:1px 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface2)}
+.prev .c.y{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.prev input[type=range]{accent-color:var(--accent);width:130px}
+.agree{font-size:12.5px;color:var(--ok);margin:8px 0 0}
+.agree.no{color:var(--bad)}
+.foot{color:var(--muted);font-size:12.5px;text-align:center}
+
+@keyframes viewin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes rowin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:scale(1)}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fade{to{opacity:1}}
+@keyframes ring{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+@keyframes flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--accent)}60%{box-shadow:0 0 0 9px transparent}}
+
+@media (max-width:1000px){.stage svg{min-width:520px}.g3{grid-template-columns:minmax(0,1fr)}.g-main,.g2{grid-template-columns:minmax(0,1fr)}.nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:480px){.nv small{display:none}.nv{padding:8px 10px}.fa{min-width:50px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 40" aria-hidden="true">
+        <path class="ln" d="M17 20 H47"/><path class="ln" d="M42 15 L47 20 L42 25"/>
+        <circle class="dot a" cx="12" cy="20" r="9"/><circle class="dot b" cx="52" cy="20" r="9"/><circle class="dot b" cx="52" cy="20" r="5.5" style="fill:none"/>
+      </svg>
+      <div>
+        <h1>NFA to DFA Simulator</h1>
+        <p class="sub">Build an NFA, convert it with the subset construction, compare it with the minimal DFA, then test strings.</p>
+      </div>
+    </div>
+    <div class="tools">
+      <select id="preset" class="btn" aria-label="Load an example automaton"></select>
+      <button class="btn" id="btnClear" type="button">New blank NFA</button>
+      <button class="btn icon" id="btnTheme" type="button" aria-label="Toggle light or dark theme" title="Toggle theme"><svg class="themeico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="nav" id="nav" role="tablist" aria-label="Screens">
+    <button class="nv" role="tab" data-view="define" aria-selected="true"><span class="num">1</span><span><b>Define NFA</b><small>Enter states and moves</small></span></button>
+    <button class="nv" role="tab" data-view="convert" aria-selected="false"><span class="num">2</span><span><b>Convert</b><small>Subset construction, step by step</small></span></button>
+    <button class="nv" role="tab" data-view="compare" aria-selected="false"><span class="num">3</span><span><b>Compare</b><small>NFA vs DFA vs minimal DFA</small></span></button>
+    <button class="nv" role="tab" data-view="test" aria-selected="false"><span class="num">4</span><span><b>Test strings</b><small>Run input on all three</small></span></button>
+  </nav>
+  <div class="pipe" id="pipe" aria-live="polite"></div>
+
+  <!-- 1. DEFINE -->
+  <main class="view" id="v-define">
+    <div class="g2">
+      <section class="card" aria-labelledby="hEd">
+        <div class="card-head"><div><h2 id="hEd">NFA definition</h2><p class="hint">Type target states in the cells, separated by commas.</p></div></div>
+        <div class="chips" id="alphaChips"></div>
+        <div class="tblwrap"><table class="ed" id="edTable"></table></div>
+        <div class="add">
+          <button class="btn sm" id="btnAddState" type="button">+ State</button>
+          <input class="field" id="newSym" maxlength="1" placeholder="symbol" aria-label="New alphabet symbol">
+          <button class="btn sm" id="btnAddSym" type="button">+ Symbol</button>
+          <span style="flex:1"></span>
+          <button class="btn sm" id="btnCopyNfa" type="button">Copy as JSON</button>
+          <button class="btn sm" id="btnLoadNfa" type="button">Load JSON…</button>
+        </div>
+        <p class="note" id="edNote">Use the ε column for epsilon moves. Pick the start state with the radio button and mark accepting states with the checkbox.</p>
+        <div id="jsonWrap" hidden>
+          <textarea class="jsonbox" id="jsonBox" spellcheck="false" aria-label="NFA as JSON"></textarea>
+          <div class="add" style="margin-top:8px"><button class="btn sm primary" id="btnApplyJson" type="button">Load this NFA</button><button class="btn sm" id="btnCloseJson" type="button">Close</button></div>
+        </div>
+      </section>
+      <section class="card m-nfa" aria-labelledby="hDn">
+        <div class="card-head"><div><h2 id="hDn"><span class="dotm nfa"></span>Your NFA</h2><p class="hint">Drag states to rearrange. Dashed edges are ε-moves.</p></div><button class="btn sm btnLayout" type="button">Auto-layout</button></div>
+        <div class="stage"><svg id="svgDefN" role="img" aria-label="NFA diagram"></svg></div>
+        <div class="legend"><span><i></i>state</span><span><i class="acc"></i>accepting</span><span>→ start</span></div>
+        <div class="cta"><span class="note" style="margin:0">Ready? The next screen builds the DFA one step at a time.</span><button class="btn primary pulse" id="goConvert" type="button">Convert to DFA →</button></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 2. CONVERT -->
+  <main class="view" id="v-convert" hidden>
+    <section class="card now" aria-labelledby="hNow">
+      <div class="now-top">
+        <h2 id="hNow" class="sr" style="position:absolute;left:-9999px">Current conversion step</h2>
+        <div class="ctrl" style="flex:1">
+          <button class="btn icon" id="bFirst" type="button" title="Back to start" aria-label="Back to start">⏮</button>
+          <button class="btn icon" id="bPrev" type="button" title="Previous step" aria-label="Previous step">◀</button>
+          <button class="btn primary" id="bPlay" type="button" aria-label="Play" style="min-width:92px">▶ Play</button>
+          <button class="btn icon" id="bNext" type="button" title="Next step" aria-label="Next step">▶|</button>
+          <button class="btn icon" id="bLast" type="button" title="Jump to the finished DFA" aria-label="Jump to the end">⏭</button>
+          <div class="grow bar" aria-hidden="true"><i id="barFill"></i></div>
+          <span class="pos" id="posTxt">0 / 0</span>
+          <label>Speed <input type="range" id="speed" min="1" max="5" value="3" aria-label="Animation speed"></label>
+        </div>
+      </div>
+      <div id="nowBody" aria-live="polite"></div>
+      <div class="kbd">Tip: use <kbd>←</kbd> <kbd>→</kbd> to step.</div>
+    </section>
+
+    <div class="g-main">
+      <div class="stack">
+      <section class="card m-dfa" aria-labelledby="hCv">
+        <div class="card-head">
+          <div><h2 id="hCv"><span class="dotm dfa"></span>DFA being built</h2><p class="hint">Teal state is the one being processed.</p></div>
+          <div class="tabs" id="cvTabs" role="tablist" aria-label="Which diagram to show">
+            <button class="tab" role="tab" data-cv="dfa" aria-selected="true">DFA</button>
+            <button class="tab" role="tab" data-cv="nfa" aria-selected="false">NFA (source)</button>
+          </div>
+        </div>
+        <div class="stage" id="paneCvD"><svg id="svgCvD" role="img" aria-label="DFA under construction"></svg></div>
+        <div class="stage" id="paneCvN" hidden><svg id="svgCvN" role="img" aria-label="Source NFA"></svg></div>
+        <div class="legend">
+          <span><i></i>state</span><span><i class="acc"></i>accepting</span><span><i class="cur"></i>being processed</span>
+          <div class="opts" style="margin-left:auto">
+            <label><input type="checkbox" class="optDead" checked> dead state ∅</label>
+            <label><input type="checkbox" class="optSets" checked> NFA sets</label>
+            <button class="btn sm btnLayout" type="button">Auto-layout</button>
+          </div>
+        </div>
+      </section>
+        <section class="card" aria-labelledby="hTb">
+          <div class="card-head">
+            <h2 id="hTb">DFA transition table</h2>
+            <div class="sbtns"><button class="btn sm" id="btnCopyTbl" type="button">Copy table</button><button class="btn sm" id="btnCopyJson" type="button">Copy JSON</button></div>
+          </div>
+          <div class="tblwrap" style="margin-top:0"><table class="dt" id="dfaTable"></table></div>
+          <p class="note" id="tblNote"></p>
+          <textarea class="exportbox" id="exportBox" hidden readonly aria-label="Exported text"></textarea>
+        </section>
+      </div>
+      <div class="stack">
+        <section class="card" aria-labelledby="hLog">
+          <div class="card-head"><div><h2 id="hLog">Step log</h2><p class="hint">δ(S, a) = ε-closure(move(S, a))</p></div></div>
+          <div class="worklist" id="worklist"></div>
+          <ol class="log" id="log"></ol>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- 3. COMPARE -->
+  <main class="view" id="v-compare" hidden>
+    <section class="card sum">
+      <p id="cmpSummary"></p>
+      <div class="opts">
+        <label><input type="checkbox" class="optDead" checked> dead state ∅</label>
+        <label><input type="checkbox" class="optSets" checked> show sets</label>
+        <button class="btn sm btnLayout" type="button">Auto-layout</button>
+      </div>
+    </section>
+    <div class="g3">
+      <section class="card m-nfa"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm nfa"></span>NFA</h2><p class="hint">The machine you defined</p></div></div>
+        <div class="stage sm"><svg id="svgCmpN" role="img" aria-label="NFA"></svg></div><p class="cap" id="capN"></p></section>
+      <section class="card m-dfa"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm dfa"></span>DFA</h2><p class="hint">After subset construction</p></div></div>
+        <div class="stage sm"><svg id="svgCmpD" role="img" aria-label="DFA"></svg></div><p class="cap" id="capD"></p></section>
+      <section class="card m-min"><div class="card-head" style="margin-bottom:8px"><div><h2><span class="dotm min"></span>Minimal DFA</h2><p class="hint">Equivalent states merged</p></div></div>
+        <div class="stage sm"><svg id="svgCmpM" role="img" aria-label="Minimal DFA"></svg></div><p class="cap" id="capM"></p></section>
+    </div>
+    <section class="card">
+      <div class="card-head"><div><h2>State mapping</h2><p class="hint">Which NFA states each DFA state stands for, and which minimal state it merges into.</p></div></div>
+      <div class="tblwrap" style="margin-top:0"><table class="dt mt" id="mapTable"></table></div>
+    </section>
+  </main>
+
+  <!-- 4. TEST -->
+  <main class="view" id="v-test" hidden>
+    <section class="card" aria-labelledby="hTest">
+      <div class="card-head"><div><h2 id="hTest">Test a string</h2><p class="hint">Gold states show where each machine is after the symbols read so far.</p></div></div>
+      <div class="testbar">
+        <input class="field" id="testStr" placeholder="type a string, e.g. aab (empty means ε)" autocomplete="off" spellcheck="false" aria-label="Input string">
+        <button class="btn primary" id="btnRun" type="button">▶ Run</button>
+        <button class="btn icon" id="tPrev" type="button" aria-label="Previous symbol" title="Previous symbol">◀</button>
+        <button class="btn icon" id="tNext" type="button" aria-label="Next symbol" title="Next symbol">▶|</button>
+      </div>
+      <div class="quick" id="quick"></div>
+      <p class="note" id="testNote"></p>
+      <div class="vrow" id="verdictRow" aria-live="polite"></div>
+    </section>
+    <div class="g3">
+      <section class="card m-nfa"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm nfa"></span>NFA</h2></div><div class="stage sm"><svg id="svgTsN" role="img" aria-label="NFA with active states"></svg></div></section>
+      <section class="card m-dfa"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm dfa"></span>DFA</h2></div><div class="stage sm"><svg id="svgTsD" role="img" aria-label="DFA with active state"></svg></div></section>
+      <section class="card m-min"><div class="card-head" style="margin-bottom:8px"><h2><span class="dotm min"></span>Minimal DFA</h2></div><div class="stage sm"><svg id="svgTsM" role="img" aria-label="Minimal DFA with active state"></svg></div></section>
+    </div>
+    <div class="g2">
+      <section class="card"><div class="card-head"><h2>Step-by-step trace</h2></div><div class="tblwrap" style="margin-top:0"><table class="trace" id="trace"></table></div></section>
+      <section class="card prev" id="prev"></section>
+    </div>
+  </main>
+
+  <p class="foot">Subset construction with ε-closures. Minimal DFA by partition refinement. Everything runs in your browser.</p>
+</div>
+
+<script>
+'use strict';
+/* Shared constants and small DOM helpers. */
+const EPS = 'ε';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+
+
+'use strict';
+/* Built-in example automata. */
+/* ---------- presets ---------- */
+const PRESETS = [
+  { name: 'Ends with "ab"', sample: 'bbab', states: ['q0', 'q1', 'q2'], alphabet: ['a', 'b'], start: 'q0', accept: ['q2'],
+    delta: { q0: { a: ['q0', 'q1'], b: ['q0'] }, q1: { b: ['q2'] }, q2: {} } },
+  { name: 'Contains "aba"', sample: 'bbabab', states: ['q0', 'q1', 'q2', 'q3'], alphabet: ['a', 'b'], start: 'q0', accept: ['q3'],
+    delta: { q0: { a: ['q0', 'q1'], b: ['q0'] }, q1: { b: ['q2'] }, q2: { a: ['q3'] }, q3: { a: ['q3'], b: ['q3'] } } },
+  { name: '3rd symbol from the end is 1', sample: '10110', states: ['q0', 'q1', 'q2', 'q3'], alphabet: ['0', '1'], start: 'q0', accept: ['q3'],
+    delta: { q0: { 0: ['q0'], 1: ['q0', 'q1'] }, q1: { 0: ['q2'], 1: ['q2'] }, q2: { 0: ['q3'], 1: ['q3'] }, q3: {} } },
+  { name: 'ε-NFA: (ab)* or a*', sample: 'abab', states: ['q0', 'q1', 'q2', 'q3'], alphabet: ['a', 'b'], start: 'q0', accept: ['q1', 'q3'],
+    delta: { q0: { [EPS]: ['q1', 'q3'] }, q1: { a: ['q2'] }, q2: { b: ['q1'] }, q3: { a: ['q3'] } } },
+  { name: 'ε-NFA: a*b*c*', sample: 'aabcc', states: ['q0', 'q1', 'q2'], alphabet: ['a', 'b', 'c'], start: 'q0', accept: ['q2'],
+    delta: { q0: { a: ['q0'], [EPS]: ['q1'] }, q1: { b: ['q1'], [EPS]: ['q2'] }, q2: { c: ['q2'] } } },
+  { name: 'Even number of a, or ends in b', sample: 'aab', states: ['p0', 'p1', 'r0', 'r1'], alphabet: ['a', 'b'], start: 'p0', accept: ['p0', 'r1'],
+    delta: { p0: { a: ['p1'], b: ['p0'], [EPS]: ['r0'] }, p1: { a: ['p0'], b: ['p1'] }, r0: { a: ['r0'], b: ['r0', 'r1'] }, r1: {} } }
+];
+
+
+'use strict';
+/* Automata algorithms: epsilon-closure, subset construction, minimisation, running strings. No DOM access. */
+/* ---------- NFA helpers ---------- */
+const tgt = (nfa, s, sym) => (nfa.delta[s] && nfa.delta[s][sym]) || [];
+function closure(nfa, set) {
+  const out = new Set(set), st = [...set];
+  while (st.length) { const s = st.pop(); for (const t of tgt(nfa, s, EPS)) if (!out.has(t)) { out.add(t); st.push(t); } }
+  return out;
+}
+function move(nfa, set, sym) {
+  const out = new Set();
+  for (const s of set) for (const t of tgt(nfa, s, sym)) out.add(t);
+  return out;
+}
+function sortSet(nfa, set) {
+  const idx = new Map(nfa.states.map((s, i) => [s, i]));
+  return [...set].sort((a, b) => idx.get(a) - idx.get(b));
+}
+const setKey = (nfa, set) => { const a = sortSet(nfa, set); return a.length ? a.join(',') : '∅'; };
+const fmt = arr => (arr.length ? '{' + arr.join(', ') + '}' : '∅');
+function dfaName(n) { const c = String.fromCharCode(65 + (n % 26)); const k = Math.floor(n / 26); return k ? c + k : c; }
+
+/* ---------- subset construction ---------- */
+const LIMIT = 256;
+function convert(nfa) {
+  const entries = [], byKey = new Map(), order = [];
+  const accept = new Set(nfa.accept);
+  let truncated = false;
+  function add(set) {
+    const k = setKey(nfa, set);
+    if (byKey.has(k)) return byKey.get(k);
+    const arr = sortSet(nfa, set);
+    const st = { id: dfaName(order.length), key: k, set: arr, label: fmt(arr), accept: arr.some(s => accept.has(s)), dead: arr.length === 0 };
+    byKey.set(k, st); order.push(st);
+    return st;
+  }
+  const seed = [nfa.start];
+  const startSet = closure(nfa, seed);
+  const s0 = add(startSet);
+  const queue = [s0];
+  entries.push({ type: 'start', target: s0, seed, closed: sortSet(nfa, startSet), queue: queue.map(q => q.id), isNew: true });
+  outer: while (queue.length) {
+    const cur = queue.shift();
+    for (const sym of nfa.alphabet) {
+      const m = move(nfa, cur.set, sym), c = closure(nfa, m);
+      const isNew = !byKey.has(setKey(nfa, c));
+      if (isNew && order.length >= LIMIT) { truncated = true; break outer; }
+      const to = add(c);
+      if (isNew) queue.push(to);
+      entries.push({ type: 'trans', from: cur, sym, moved: sortSet(nfa, m), closed: sortSet(nfa, c), target: to, isNew, queue: queue.map(q => q.id) });
+    }
+  }
+  const full = {};
+  for (const s of order) full[s.id] = {};
+  for (const e of entries) if (e.type === 'trans') full[e.from.id][e.sym] = e.target.id;
+  return { entries, states: order, truncated, start: s0, full };
+}
+
+/* DFA as revealed after `upto` log entries */
+function buildDfa(res, upto, showDead) {
+  const seen = new Set(), states = [], trans = [];
+  for (let i = 0; i < Math.min(upto, res.entries.length); i++) {
+    const e = res.entries[i];
+    if (!seen.has(e.target.id) && (e.type === 'start' || e.isNew)) { seen.add(e.target.id); states.push(e.target); }
+    if (e.type === 'trans') trans.push({ from: e.from.id, sym: e.sym, to: e.target.id });
+  }
+  if (showDead) return { states, trans };
+  const dead = new Set(states.filter(s => s.dead).map(s => s.id));
+  return { states: states.filter(s => !s.dead), trans: trans.filter(t => !dead.has(t.to) && !dead.has(t.from)) };
+}
+
+/* ---------- minimisation (partition refinement) ---------- */
+function minimize(res, alphabet) {
+  if (res.truncated) return null;
+  const ids = res.states.map(s => s.id), T = res.full;
+  const acc = new Set(res.states.filter(s => s.accept).map(s => s.id));
+  let part = new Map(ids.map(id => [id, acc.has(id) ? 1 : 0]));
+  for (;;) {
+    const keys = new Map(), next = new Map();
+    for (const id of ids) {
+      const k = part.get(id) + '|' + alphabet.map(a => part.get(T[id][a])).join(',');
+      if (!keys.has(k)) keys.set(k, keys.size);
+      next.set(id, keys.get(k));
+    }
+    const before = new Set(part.values()).size;
+    part = next;
+    if (keys.size === before) break;
+  }
+  // order groups by BFS from the start group
+  const groupOf = id => part.get(id);
+  const order = [], name = new Map(), q = [groupOf(res.start.id)];
+  name.set(q[0], 'M0'); order.push(q[0]);
+  while (q.length) {
+    const g = q.shift();
+    for (const id of ids) if (groupOf(id) === g) for (const a of alphabet) {
+      const h = groupOf(T[id][a]);
+      if (!name.has(h)) { name.set(h, 'M' + name.size); order.push(h); q.push(h); }
+    }
+  }
+  const states = order.map(g => {
+    const members = ids.filter(id => groupOf(id) === g);
+    const accepting = members.some(m => acc.has(m));
+    const trap = !accepting && members.every(m => alphabet.every(a => groupOf(T[m][a]) === g));
+    return { id: name.get(g), members, accept: accepting, dead: trap, label: fmt(members) };
+  });
+  const trans = [], seen = new Set();
+  for (const st of states) {
+    const rep = st.members[0];
+    for (const a of alphabet) { const to = name.get(groupOf(T[rep][a])); const k = st.id + '|' + a; if (!seen.has(k)) { seen.add(k); trans.push({ from: st.id, sym: a, to }); } }
+  }
+  const map = {};
+  for (const id of ids) map[id] = name.get(groupOf(id));
+  const startId = name.get(groupOf(res.start.id));
+  return { states, trans, map, start: startId };
+}
+
+/* ---------- running strings ---------- */
+function runNFA(nfa, str) {
+  const sets = [closure(nfa, [nfa.start])];
+  for (const ch of str) sets.push(closure(nfa, move(nfa, sets[sets.length - 1], ch)));
+  return sets;
+}
+function runDFA(res, str) {
+  let cur = res.start.id; const path = [cur];
+  for (const ch of str) { cur = res.full[cur] && res.full[cur][ch]; path.push(cur); if (cur === undefined) break; }
+  return path;
+}
+function runMin(min, str) {
+  const t = {}; for (const x of min.trans) (t[x.from] = t[x.from] || {})[x.sym] = x.to;
+  let cur = min.start; const path = [cur];
+  for (const ch of str) { cur = t[cur] && t[cur][ch]; path.push(cur); if (cur === undefined) break; }
+  return path;
+}
+
+
+'use strict';
+/* Graph layout and SVG rendering, dragging. */
+/* ---------- layout + graph rendering ---------- */
+const R = 24;
+function layout(ids, edges, startId) {
+  const adj = new Map(ids.map(i => [i, []]));
+  for (const e of edges) if (adj.has(e.from)) adj.get(e.from).push(e.to);
+  const layer = new Map([[startId, 0]]), q = [startId];
+  while (q.length) { const u = q.shift(); for (const v of adj.get(u) || []) if (!layer.has(v)) { layer.set(v, layer.get(u) + 1); q.push(v); } }
+  let mx = Math.max(0, ...layer.values());
+  const loose = ids.filter(i => !layer.has(i));
+  if (loose.length) { mx++; loose.forEach(i => layer.set(i, mx)); }
+  const cols = new Map();
+  for (const id of ids) { const l = layer.get(id); if (!cols.has(l)) cols.set(l, []); cols.get(l).push(id); }
+  const pos = {};
+  for (const [l, list] of cols) list.forEach((id, i) => { pos[id] = { x: l * 165, y: (i - (list.length - 1) / 2) * 120 }; });
+  const ys = Object.values(pos).map(p => p.y), minY = Math.min(...ys);
+  for (const id in pos) { pos[id].x += 90; pos[id].y += -minY + 90; }
+  return pos;
+}
+
+function mergeEdges(list) {
+  const m = new Map();
+  for (const e of list) {
+    const k = e.from + '\u0001' + e.to;
+    if (!m.has(k)) m.set(k, { from: e.from, to: e.to, syms: [] });
+    if (!m.get(k).syms.includes(e.sym)) m.get(k).syms.push(e.sym);
+  }
+  return [...m.values()].map(e => ({ from: e.from, to: e.to, label: e.syms.join(','), eps: e.syms.length === 1 && e.syms[0] === EPS }));
+}
+
+const _seen = new WeakMap();
+function renderGraph(svg, g, posMap, opts = {}) {
+  const { active = new Set(), current = null, hotEdge = null, emptyText = '' } = opts;
+  const prev = _seen.get(svg) || { n: new Set(), e: new Set() };
+  const nowN = new Set(), nowE = new Set();
+  const nodes = g.nodes;
+  if (!nodes.length) {
+    svg.setAttribute('viewBox', '0 0 520 260');
+    svg.innerHTML = `<text class="empty" x="260" y="135" text-anchor="middle">${esc(emptyText)}</text>`;
+    _seen.set(svg, { n: nowN, e: nowE });
+    return;
+  }
+  const P = id => posMap[id] || { x: 0, y: 0 };
+  const uid = 'm' + (svg.id || 'g');
+  let edgesHtml = '', labelsHtml = '';
+  const ext = [];
+  const keys = new Set(g.edges.map(e => e.from + '>' + e.to));
+  for (const e of g.edges) {
+    const a = P(e.from), b = P(e.to);
+    const ek = e.from + '>' + e.to; nowE.add(ek);
+    const cls = 'edge' + (prev.e.has(ek) ? '' : ' enter') + (e.eps ? ' eps' : '') + (hotEdge === ek ? ' hot' : '');
+    let d, lx, ly;
+    if (e.from === e.to) {
+      d = `M${a.x - R * .62} ${a.y - R * .8} C${a.x - 38} ${a.y - R - 46} ${a.x + 38} ${a.y - R - 46} ${a.x + R * .62} ${a.y - R * .8 - 3}`;
+      lx = a.x; ly = a.y - R - 38;
+    } else {
+      const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+      const rev = keys.has(e.to + '>' + e.from), back = b.x <= a.x + 1 && Math.abs(dy) < 1;
+      const c = rev ? 36 : back ? Math.max(46, L * 0.3) : (Math.abs(dy) > 1 && Math.abs(dx) > 1 && L > 260 ? 20 : 0);
+      const mx = (a.x + b.x) / 2 + nx * c * 2, my = (a.y + b.y) / 2 + ny * c * 2;
+      const da = Math.hypot(mx - a.x, my - a.y) || 1, db = Math.hypot(mx - b.x, my - b.y) || 1;
+      const sx = a.x + (mx - a.x) / da * R, sy = a.y + (my - a.y) / da * R;
+      const ex = b.x + (mx - b.x) / db * (R + 3), ey = b.y + (my - b.y) / db * (R + 3);
+      d = `M${sx} ${sy} Q${mx} ${my} ${ex} ${ey}`;
+      const px = .25 * sx + .5 * mx + .25 * ex, py = .25 * sy + .5 * my + .25 * ey;
+      const side = c ? 1 : -1;
+      lx = px + nx * side * 12; ly = py + ny * side * 12 + 4;
+    }
+    ext.push([lx, ly]);
+    edgesHtml += `<g class="${cls}"><path class="p" pathLength="1" d="${d}" marker-end="url(#${uid})"/></g>`;
+    labelsHtml += `<g class="${cls}"><text x="${lx}" y="${ly}">${esc(e.label)}</text></g>`;
+  }
+  let nodesHtml = '';
+  for (const n of nodes) {
+    const p = P(n.id); nowN.add(n.id);
+    const cls = 'node' + (prev.n.has(n.id) ? '' : ' enter') + (active.has(n.id) ? ' active' : '') + (current === n.id ? ' current' : '') + (n.dead ? ' dead' : '');
+    const small = n.label.length > 2;
+    nodesHtml += `<g class="${cls}" data-id="${esc(n.id)}" transform="translate(${p.x} ${p.y})"><g class="body">` +
+      (active.has(n.id) || current === n.id ? `<circle class="ring" r="${R}"/>` : '') +
+      (n.start ? `<path class="startarrow" d="M${-R - 40} 0 H${-R - 3}" marker-end="url(#${uid})"/>` : '') +
+      `<circle class="main" r="${R}"/>` + (n.accept ? `<circle class="inner" r="${R - 5}"/>` : '') +
+      `<text class="lbl"${small ? ' style="font-size:12px"' : ''}>${esc(n.label)}</text>` +
+      (n.sub ? `<text class="set" y="${R + 15}">${esc(n.sub)}</text>` : '') + `</g></g>`;
+  }
+  const xs = nodes.map(n => P(n.id).x), ys = nodes.map(n => P(n.id).y);
+  let x0 = Math.min(...xs) - 85, x1 = Math.max(...xs) + 55, y0 = Math.min(...ys) - 90, y1 = Math.max(...ys) + 62;
+  if (svg._lock) { const o = svg._vb; x0 = Math.min(x0, o[0]); y0 = Math.min(y0, o[1]); x1 = Math.max(x1, o[0] + o[2]); y1 = Math.max(y1, o[1] + o[3]); }
+  for (const [ex, ey] of ext) { x0 = Math.min(x0, ex - 30); x1 = Math.max(x1, ex + 30); y0 = Math.min(y0, ey - 22); y1 = Math.max(y1, ey + 14); }
+  let w = x1 - x0, h = y1 - y0;
+  if (w < 440) { x0 -= (440 - w) / 2; w = 440; }
+  if (h < 210) { y0 -= (210 - h) / 2; h = 210; }
+  svg._vb = [x0, y0, w, h];
+  svg.setAttribute('viewBox', `${x0} ${y0} ${w} ${h}`);
+  svg.style.minWidth = opts.scroll ? Math.min(w * .6, 900) + 'px' : '';
+  svg.innerHTML = `<defs><marker id="${uid}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--edge)"/></marker></defs>` +
+    edgesHtml + nodesHtml + labelsHtml;
+  _seen.set(svg, { n: nowN, e: nowE });
+}
+
+/* drag support: svg -> { posMap getter, redraw } */
+function enableDrag(svg, getPos, redraw) {
+  let drag = null;
+  svg.addEventListener('pointerdown', ev => {
+    const g = ev.target.closest('.node'); if (!g) return;
+    const id = g.dataset.id, pos = getPos(); if (!pos[id]) return;
+    const m = svg.getScreenCTM().inverse(), pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    const q = pt.matrixTransform(m);
+    drag = { id, dx: pos[id].x - q.x, dy: pos[id].y - q.y };
+    svg._lock = true; svg.setPointerCapture(ev.pointerId); ev.preventDefault();
+  });
+  svg.addEventListener('pointermove', ev => {
+    if (!drag) return;
+    const m = svg.getScreenCTM().inverse(), pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    const q = pt.matrixTransform(m), pos = getPos();
+    pos[drag.id] = { x: q.x + drag.dx, y: q.y + drag.dy };
+    redraw();
+  });
+  const end = () => { if (drag) { drag = null; svg._lock = false; redraw(); } };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+}
+
+
+'use strict';
+/* Application state, the four screens, editor, import and export, start-up. */
+/* ================= app state ================= */
+const S = {
+  nfa: null, res: null, min: null, view: 'define', cv: 'dfa', step: 0, watched: -1,
+  showDead: true, showSets: true, timer: null, delay: 700,
+  posN: {}, posD: {}, posM: {},
+  test: { str: '', error: '', sets: [], path: [], mpath: [], pos: 0, timer: null, ok: null }
+};
+const DELAYS = [1500, 1050, 700, 400, 180];
+const VIEWS = ['define', 'convert', 'compare', 'test'];
+
+/* ---------- derived graphs ---------- */
+function nfaGraph() {
+  const n = S.nfa, edges = [];
+  for (const s of n.states) for (const sym of [...n.alphabet, EPS]) for (const t of tgt(n, s, sym)) edges.push({ from: s, to: t, sym });
+  return { nodes: n.states.map(s => ({ id: s, label: s, sub: '', accept: n.accept.includes(s), start: s === n.start })), edges: mergeEdges(edges) };
+}
+function dfaFullIds() {
+  const all = buildDfa(S.res, S.res.entries.length, true);
+  return { nodes: all.states.map(s => s.id), edges: all.trans };
+}
+function dfaGraph(step) {
+  const d = buildDfa(S.res, step, S.showDead);
+  return {
+    nodes: d.states.map(s => ({ id: s.id, label: s.id, sub: S.showSets ? s.label : '', accept: s.accept, start: s.id === S.res.start.id, dead: s.dead })),
+    edges: mergeEdges(d.trans)
+  };
+}
+function minGraph() {
+  const m = S.min;
+  if (!m) return { nodes: [], edges: [] };
+  const hide = new Set(S.showDead ? [] : m.states.filter(s => s.dead).map(s => s.id));
+  return {
+    nodes: m.states.filter(s => !hide.has(s.id)).map(s => ({ id: s.id, label: s.id, sub: S.showSets ? s.label : '', accept: s.accept, start: s.id === m.start, dead: s.dead })),
+    edges: mergeEdges(m.trans.filter(t => !hide.has(t.from) && !hide.has(t.to)))
+  };
+}
+function ensurePos(map, ids, edges, startId) {
+  const p = layout(ids, edges, startId);
+  for (const id of ids) if (!map[id]) map[id] = p[id];
+}
+function resetLayouts() {
+  S.posN = {}; S.posD = {}; S.posM = {};
+  ensurePos(S.posN, S.nfa.states, nfaGraph().edges, S.nfa.start);
+  const f = dfaFullIds(); ensurePos(S.posD, f.nodes, f.edges, S.res.start.id);
+  if (S.min) ensurePos(S.posM, S.min.states.map(s => s.id), mergeEdges(S.min.trans), S.min.start);
+}
+
+/* ---------- compute ---------- */
+function recompute(opts = {}) {
+  const keepN = opts.keepN;
+  const oldN = S.posN;
+  S.res = convert(S.nfa);
+  S.min = minimize(S.res, S.nfa.alphabet);
+  resetLayouts();
+  if (keepN) for (const id of S.nfa.states) if (oldN[id]) S.posN[id] = oldN[id];
+  stopPlay(); S.step = S.res.entries.length; S.watched = -1;
+  runTest(false);
+  renderPipe();
+  if (opts.editor) renderEditor();
+  renderView();
+}
+
+/* ---------- small renderers ---------- */
+function renderPipe() {
+  const d = S.res.states.length, m = S.min ? S.min.states.length : '–';
+  $('#pipe').innerHTML =
+    `<span>Machine sizes:</span><span class="sz nfa"><i></i>NFA <b>${S.nfa.states.length}</b> states</span><span class="ar">→</span>` +
+    `<span class="sz dfa" style="animation-delay:.08s"><i></i>DFA <b>${d}${S.res.truncated ? '+' : ''}</b> states</span><span class="ar">→</span>` +
+    `<span class="sz min" style="animation-delay:.16s"><i></i>Minimal <b>${m}</b> states</span>` +
+    `<span style="margin-left:6px">Worst case for this NFA is 2<sup>${S.nfa.states.length}</sup> = ${S.nfa.states.length <= 20 ? Math.pow(2, S.nfa.states.length) : 'huge'}.</span>`;
+}
+
+function renderEditor() {
+  const n = S.nfa, cols = [...n.alphabet, EPS];
+  $('#alphaChips').innerHTML = '<span style="color:var(--muted);font-size:12.5px">Alphabet Σ</span>' +
+    n.alphabet.map(a => `<span class="chip">${esc(a)}${n.alphabet.length > 1 ? `<button type="button" data-rmsym="${esc(a)}" aria-label="Remove symbol ${esc(a)}">×</button>` : '<span style="width:6px"></span>'}</span>`).join('');
+  let h = '<thead><tr><th title="start state">Start</th><th title="accepting state">Final</th><th>State</th>' +
+    cols.map(c => `<th class="${c === EPS ? 'eps' : ''}">${esc(c)}</th>`).join('') + '<th></th></tr></thead><tbody>';
+  for (const s of n.states) {
+    h += `<tr class="row-in"><td><input type="radio" name="start" data-start="${esc(s)}" ${n.start === s ? 'checked' : ''} aria-label="${esc(s)} is the start state"></td>` +
+      `<td><input type="checkbox" data-acc="${esc(s)}" ${n.accept.includes(s) ? 'checked' : ''} aria-label="${esc(s)} is accepting"></td>` +
+      `<td><input class="nm" data-name="${esc(s)}" value="${esc(s)}" spellcheck="false" aria-label="State name"></td>` +
+      cols.map(c => `<td><input class="cell" data-s="${esc(s)}" data-sym="${esc(c)}" value="${esc(tgt(n, s, c).join(','))}" placeholder="–" spellcheck="false" aria-label="${esc(s)} on ${esc(c)}"></td>`).join('') +
+      `<td><button class="x" type="button" data-del="${esc(s)}" aria-label="Delete ${esc(s)}" ${n.states.length < 2 ? 'disabled' : ''}>✕</button></td></tr>`;
+  }
+  $('#edTable').innerHTML = h + '</tbody>';
+}
+
+function highlightSets() {
+  const t = S.test, p = t.pos;
+  return {
+    n: new Set(t.sets[p] ? [...t.sets[p]] : []),
+    d: new Set(t.path[p] ? [t.path[p]] : []),
+    m: new Set(t.mpath[p] ? [t.mpath[p]] : [])
+  };
+}
+
+/* ---------- Convert screen ---------- */
+function flowChip(cls, label, main, sub, d) { return `<div class="fc ${cls}" style="--d:${d}s"><small>${label}</small><b>${main}</b>${sub ? `<span>${sub}</span>` : ''}</div>`; }
+function flowArrow(label, d) { return `<div class="fa" style="--d:${d}s"><i>→</i><small>${label}</small></div>`; }
+function renderNow() {
+  const E = S.res.entries, N = E.length, k = Math.min(S.step, N), box = $('#nowBody');
+  if (k === 0) {
+    box.innerHTML = `<div class="now-title">Ready to convert <small>${N} steps</small></div><p class="now-text">The first DFA state is the ε-closure of the NFA start state <b class="mono">${esc(S.nfa.start)}</b>. Then each new DFA state is tried on every symbol: take the <b>move</b>, then the <b>ε-closure</b>, and that set becomes the next DFA state. Press <b>Play</b> or <b>▶|</b>.</p>`;
+    return;
+  }
+  const e = E[k - 1], acc = e.target.accept ? ' acc' : '';
+  let head, flow;
+  if (e.type === 'start') {
+    head = `<div class="now-title">Step ${k} of ${N}: start state</div>`;
+    flow = flowChip('', 'NFA start', esc(S.nfa.start), '', 0) + flowArrow('ε-closure', .1) + flowChip('', 'reachable by ε', esc(fmt(e.closed)), '', .2) + flowArrow('becomes', .3) + flowChip('to' + acc, 'DFA state', e.target.id, esc(e.target.label), .4);
+  } else {
+    const tag = e.isNew ? (e.target.dead ? '<span class="tag dead">dead state</span>' : '<span class="tag">new state</span>') : '<span class="tag old">already exists</span>';
+    head = `<div class="now-title">Step ${k} of ${N}: from ${e.from.id} on <span class="mono">${esc(e.sym)}</span> ${tag}</div>`;
+    flow = flowChip('from' + (e.from.accept ? ' acc' : ''), 'DFA state', e.from.id, esc(e.from.label), 0) + flowArrow('move on <b class="mono">' + esc(e.sym) + '</b>', .1) +
+      flowChip('', 'NFA states reached', esc(fmt(e.moved)), '', .2) + flowArrow('ε-closure', .3) + flowChip('', 'with ε-moves', esc(fmt(e.closed)), '', .4) + flowArrow(e.isNew ? 'new' : 'matches', .5) +
+      flowChip('to' + (e.isNew ? '' : ' old') + acc, 'DFA state', e.target.id, esc(e.target.label), .6);
+  }
+  const done = k === N ? `<p class="now-text" style="color:var(--ink)"><b>Done.</b> ${S.res.states.length} DFA states${S.res.truncated ? ' (stopped at the size limit)' : ''}, ${S.res.states.filter(s => s.accept).length} accepting. Open <b>Compare</b> to see it next to the NFA and the minimal DFA.</p>` : '';
+  box.innerHTML = head + `<div class="flow" style="margin-top:8px">${flow}</div>` + done;
+}
+
+function renderLog() {
+  const E = S.res.entries, upto = Math.min(S.step, E.length), last = E[upto - 1];
+  $('#worklist').innerHTML = upto === 0
+    ? '<span>Nothing processed yet.</span>'
+    : `<span>Still to process:</span>${last.queue.length ? last.queue.map(q => `<span class="pill">${q}</span>`).join('') : '<span class="pill">nothing left</span>'}<span>· DFA states so far: ${buildDfa(S.res, upto, true).states.length}</span>`;
+  const rows = [];
+  for (let i = 0; i < upto; i++) {
+    const e = E[i], cur = i === upto - 1 && S.step < E.length;
+    if (e.type === 'start') {
+      rows.push(`<li class="lg${cur ? ' cur' : ''}"><span class="k">start</span><span class="ch"><b>ε-closure</b> <span class="st">{${esc(e.seed.join(', '))}}</span> → <span class="st">${esc(fmt(e.closed))}</span> → <span class="pill new${e.target.accept ? ' acc' : ''}">${e.target.id}</span></span></li>`);
+    } else {
+      const tag = e.isNew ? (e.target.dead ? '<span class="tag dead">dead</span>' : '<span class="tag">new</span>') : '<span class="tag old">seen</span>';
+      rows.push(`<li class="lg${cur ? ' cur' : ''}"><span class="k">δ(${e.from.id}, ${esc(e.sym)})</span><span class="ch"><b>move</b> <span class="st">${esc(fmt(e.moved))}</span> → <b>closure</b> <span class="st">${esc(fmt(e.closed))}</span> → <span class="pill${e.isNew ? ' new' : ''}${e.target.accept ? ' acc' : ''}">${e.target.id}</span>${tag}</span></li>`);
+    }
+  }
+  const box = $('#log'), fresh = S._logUpto;
+  box.innerHTML = rows.join('') || '<li class="note">Steps will appear here.</li>';
+  const lis = $$('.lg', box);
+  lis.forEach((li, i) => { if (!(i === lis.length - 1 && upto > (fresh || 0))) li.style.animation = 'none'; });
+  S._logUpto = upto;
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderTable() {
+  const n = S.nfa, upto = S.step, d = buildDfa(S.res, upto, S.showDead);
+  const trans = {}; for (const t of d.trans) (trans[t.from] = trans[t.from] || {})[t.sym] = t.to;
+  const E = S.res.entries, lastE = upto > 0 ? E[Math.min(upto, E.length) - 1] : null, building = upto < E.length;
+  let h = '<thead><tr><th>State</th><th>NFA set</th>' + n.alphabet.map(a => `<th>${esc(a)}</th>`).join('') + '</tr></thead><tbody>';
+  for (const s of d.states) {
+    const mark = (s.id === S.res.start.id ? '<span class="mark">→</span>' : '') + (s.accept ? '<span class="fin">*</span>' : '');
+    const isNewRow = lastE && lastE.isNew && lastE.target.id === s.id;
+    h += `<tr class="${isNewRow ? 'flash' : ''}"><td class="st">${mark} ${s.id}</td><td class="sets">${esc(s.label)}</td>` +
+      n.alphabet.map(a => {
+        const to = trans[s.id] && trans[s.id][a];
+        const f = lastE && lastE.type === 'trans' && lastE.from.id === s.id && lastE.sym === a;
+        return to ? `<td class="${f ? 'f' : ''}">${to}</td>` : '<td class="blank">·</td>';
+      }).join('') + '</tr>';
+  }
+  $('#dfaTable').innerHTML = h + '</tbody>';
+  $('#tblNote').textContent = S.res.truncated
+    ? `Stopped at ${LIMIT} DFA states. This NFA is too large to convert fully here.`
+    : (building ? 'Rows fill in as the conversion runs. ' : '') + '→ marks the start state, * marks accepting states.' + (S.showDead && S.res.states.some(s => s.dead) ? ' ∅ is the dead state.' : '');
+}
+
+function renderControls() {
+  const N = S.res.entries.length;
+  $('#posTxt').textContent = `${Math.min(S.step, N)} / ${N}`;
+  $('#barFill').style.width = (N ? Math.min(S.step, N) / N * 100 : 0) + '%';
+  $('#bFirst').disabled = $('#bPrev').disabled = S.step === 0;
+  $('#bNext').disabled = $('#bLast').disabled = S.step >= N;
+  $('#bPlay').textContent = S.timer ? '❚❚ Pause' : (S.step >= N ? '↻ Replay' : '▶ Play');
+  $('#bPlay').setAttribute('aria-label', S.timer ? 'Pause' : 'Play');
+  $('#bPlay').classList.toggle('pulse', S.step === 0 && !S.timer);
+}
+
+function renderConvertGraphs() {
+  const E = S.res.entries, building = S.step < E.length, last = S.step > 0 ? E[Math.min(S.step, E.length) - 1] : null;
+  const cur = last ? (last.type === 'start' ? last.target.id : last.from.id) : null;
+  const hot = last && last.type === 'trans' ? last.from.id + '>' + last.target.id : null;
+  if (S.cv === 'dfa') renderGraph($('#svgCvD'), dfaGraph(S.step), S.posD, { current: building ? cur : null, hotEdge: building ? hot : null, emptyText: 'Press Play to build the DFA', scroll: true });
+  else renderGraph($('#svgCvN'), nfaGraph(), S.posN, { scroll: true });
+}
+
+/* ---------- other screens ---------- */
+function renderDefine() { renderGraph($('#svgDefN'), nfaGraph(), S.posN, { scroll: true }); }
+
+function renderCompare() {
+  const hl = { n: new Set(), d: new Set(), m: new Set() };
+  renderGraph($('#svgCmpN'), nfaGraph(), S.posN, { active: hl.n });
+  renderGraph($('#svgCmpD'), dfaGraph(S.res.entries.length), S.posD, {});
+  renderGraph($('#svgCmpM'), minGraph(), S.posM, { emptyText: 'DFA too large to minimise here' });
+  const nS = S.nfa.states.length, dS = S.res.states.length, mS = S.min ? S.min.states.length : null;
+  $('#cmpSummary').innerHTML = `The NFA with <b>${nS}</b> states became a DFA with <b>${dS}</b> states` +
+    (mS !== null ? `, and ${mS < dS ? `minimisation merged it down to <b>${mS}</b>` : `it is already minimal at <b>${mS}</b>`}.` : '.') +
+    (S.res.states.some(s => s.dead) ? ' The dashed ∅ state is the dead state.' : '');
+  $('#capN').innerHTML = `<b>${nS}</b> states, <b>${S.nfa.accept.length}</b> accepting${S.nfa.states.some(s => tgt(S.nfa, s, EPS).length) ? ', uses ε-moves' : ''}.`;
+  $('#capD').innerHTML = `<b>${dS}</b> states, <b>${S.res.states.filter(s => s.accept).length}</b> accepting. Every state has exactly one move per symbol.`;
+  $('#capM').innerHTML = mS === null ? 'Too large to minimise.' : `<b>${mS}</b> states, <b>${S.min.states.filter(s => s.accept).length}</b> accepting. No two states are equivalent.`;
+  if (S.min) {
+    let h = '<thead><tr><th>DFA state</th><th>NFA states inside</th><th>Accepting</th><th>Minimal state</th></tr></thead><tbody>';
+    for (const s of S.res.states) h += `<tr><td class="st">${s.id}</td><td class="sets">${esc(s.label)}</td><td>${s.accept ? '<span class="fin">yes</span>' : '–'}</td><td class="mn">${S.min.map[s.id]}</td></tr>`;
+    $('#mapTable').innerHTML = h + '</tbody>';
+  } else $('#mapTable').innerHTML = '<tbody><tr><td>Minimisation skipped for very large DFAs.</td></tr></tbody>';
+}
+
+function renderTestGraphs() {
+  const h = highlightSets();
+  renderGraph($('#svgTsN'), nfaGraph(), S.posN, { active: h.n });
+  renderGraph($('#svgTsD'), dfaGraph(S.res.entries.length), S.posD, { active: h.d });
+  renderGraph($('#svgTsM'), minGraph(), S.posM, { active: h.m, emptyText: 'DFA too large to minimise here' });
+}
+
+function renderView() {
+  if (S.view === 'define') renderDefine();
+  else if (S.view === 'convert') { renderNow(); renderLog(); renderTable(); renderControls(); renderConvertGraphs(); }
+  else if (S.view === 'compare') renderCompare();
+  else if (S.view === 'test') { renderTestGraphs(); renderTest(); }
+}
+
+/* ---------- navigation ---------- */
+function showView(v, fromHash) {
+  if (!VIEWS.includes(v)) v = 'define';
+  if (S.view !== v) stopPlay();
+  S.view = v;
+  VIEWS.forEach(x => { $('#v-' + x).hidden = x !== v; });
+  $$('.nv').forEach(b => b.setAttribute('aria-selected', b.dataset.view === v));
+  if (v === 'convert' && S.watched !== S.nfa._ver) { S.step = 0; S.watched = S.nfa._ver; }
+  if (v !== 'test') stopTestPlay();
+  if (!fromHash && location.hash !== '#' + v) { try { history.replaceState(null, '', '#' + v); } catch (e) { location.hash = v; } }
+  renderView();
+  if (v === 'test' && !$('#testStr').value && S.test.str) $('#testStr').value = S.test.str;
+}
+
+/* ---------- stepper ---------- */
+function stopPlay() { if (S.timer) { clearInterval(S.timer); S.timer = null; } }
+function goto(step) {
+  S.step = Math.max(0, Math.min(S.res.entries.length, step));
+  if (S.view === 'convert') { renderNow(); renderLog(); renderTable(); renderControls(); renderConvertGraphs(); }
+}
+function playTick() {
+  if (S.step >= S.res.entries.length) { stopPlay(); renderControls(); return; }
+  goto(S.step + 1);
+  if (S.step >= S.res.entries.length) { stopPlay(); renderControls(); }
+}
+function togglePlay() {
+  if (S.timer) { stopPlay(); renderControls(); return; }
+  if (S.cv !== 'dfa') setCv('dfa');
+  if (S.step >= S.res.entries.length) goto(0);
+  playTick();
+  if (S.step < S.res.entries.length) S.timer = setInterval(playTick, S.delay);
+  renderControls();
+}
+function setCv(v) {
+  S.cv = v;
+  $$('#cvTabs .tab').forEach(b => b.setAttribute('aria-selected', b.dataset.cv === v));
+  $('#paneCvD').hidden = v !== 'dfa'; $('#paneCvN').hidden = v !== 'nfa';
+  renderConvertGraphs();
+}
+
+/* ---------- NFA editing ---------- */
+const nextName = () => { let i = 0; while (S.nfa.states.includes('q' + i)) i++; return 'q' + i; };
+function touch(editor) { S.nfa._ver = (S.nfa._ver || 0) + 1; recompute({ editor, keepN: true }); }
+function validName(s) { return /^[^\s,>{}]+$/.test(s) && s !== EPS && s.length <= 8; }
+const EDNOTE = 'Use the ε column for epsilon moves. Pick the start state with the radio button and mark accepting states with the checkbox.';
+function say(msg, warn) { const n = $('#edNote'); n.textContent = msg; n.classList.toggle('warn', !!warn); }
+
+function setupEditor() {
+  const tbl = $('#edTable');
+  tbl.addEventListener('input', ev => {
+    const el = ev.target; if (!el.classList.contains('cell')) return;
+    const s = el.dataset.s, sym = el.dataset.sym, toks = el.value.split(/[,\s]+/).filter(Boolean);
+    const bad = toks.filter(t => !S.nfa.states.includes(t));
+    el.classList.toggle('bad', bad.length > 0);
+    const ok = [...new Set(toks.filter(t => S.nfa.states.includes(t)))];
+    S.nfa.delta[s] = S.nfa.delta[s] || {};
+    if (ok.length) S.nfa.delta[s][sym] = ok; else delete S.nfa.delta[s][sym];
+    say(bad.length ? `Unknown state${bad.length > 1 ? 's' : ''}: ${bad.join(', ')}. Add ${bad.length > 1 ? 'them' : 'it'} first.` : EDNOTE, bad.length);
+    touch(false);
+  });
+  tbl.addEventListener('change', ev => {
+    const el = ev.target, n = S.nfa;
+    if (el.dataset.start) { n.start = el.dataset.start; touch(false); }
+    else if (el.dataset.acc) { const s = el.dataset.acc; n.accept = el.checked ? [...new Set([...n.accept, s])] : n.accept.filter(x => x !== s); touch(false); }
+    else if (el.dataset.name) {
+      const old = el.dataset.name, nu = el.value.trim();
+      if (nu === old) return;
+      if (!validName(nu) || n.states.includes(nu)) { el.classList.add('shake'); say(!validName(nu) ? 'State names need 1 to 8 characters, with no spaces, commas or braces.' : `A state called ${nu} already exists.`, true); el.value = old; setTimeout(() => el.classList.remove('shake'), 400); return; }
+      const re = x => (x === old ? nu : x);
+      n.states = n.states.map(re); n.start = re(n.start); n.accept = n.accept.map(re);
+      const d = {};
+      for (const s of Object.keys(n.delta)) { d[re(s)] = {}; for (const sym of Object.keys(n.delta[s])) d[re(s)][sym] = n.delta[s][sym].map(re); }
+      n.delta = d;
+      const keep = S.posN[old]; say('Renamed ' + old + ' to ' + nu + '.'); touch(true); if (keep) { S.posN[nu] = keep; renderView(); }
+    }
+  });
+  tbl.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-del]'); if (!b) return;
+    const n = S.nfa, s = b.dataset.del; if (n.states.length < 2) return;
+    n.states = n.states.filter(x => x !== s); n.accept = n.accept.filter(x => x !== s);
+    if (n.start === s) n.start = n.states[0];
+    delete n.delta[s];
+    for (const k of Object.keys(n.delta)) for (const sym of Object.keys(n.delta[k])) { n.delta[k][sym] = n.delta[k][sym].filter(x => x !== s); if (!n.delta[k][sym].length) delete n.delta[k][sym]; }
+    say('Deleted ' + s + ' and every move into it.'); touch(true);
+  });
+  $('#alphaChips').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-rmsym]'); if (!b) return;
+    const a = b.dataset.rmsym, n = S.nfa; if (n.alphabet.length < 2) return;
+    n.alphabet = n.alphabet.filter(x => x !== a);
+    for (const s of Object.keys(n.delta)) delete n.delta[s][a];
+    touch(true);
+  });
+  $('#btnAddState').addEventListener('click', () => { const s = nextName(); S.nfa.states.push(s); S.nfa.delta[s] = {}; say('Added ' + s + '. Fill in its transitions.'); touch(true); });
+  const addSym = () => {
+    const inp = $('#newSym'), a = inp.value.trim();
+    if (!a || a === EPS || /[,\s]/.test(a) || S.nfa.alphabet.includes(a)) { inp.classList.add('shake'); setTimeout(() => inp.classList.remove('shake'), 400); say(S.nfa.alphabet.includes(a) ? `${a} is already in the alphabet.` : 'Enter one symbol that is not already used.', true); return; }
+    S.nfa.alphabet.push(a); inp.value = ''; say('Added symbol ' + a + '.'); touch(true);
+  };
+  $('#btnAddSym').addEventListener('click', addSym);
+  $('#newSym').addEventListener('keydown', e => { if (e.key === 'Enter') addSym(); });
+
+  const nfaJson = () => JSON.stringify({ states: S.nfa.states, alphabet: S.nfa.alphabet, start: S.nfa.start, accept: S.nfa.accept, delta: S.nfa.delta }, null, 2);
+  $('#btnCopyNfa').addEventListener('click', async () => {
+    const txt = nfaJson();
+    try { await navigator.clipboard.writeText(txt); say('NFA JSON copied. Use Load JSON to paste one back in.'); }
+    catch (e) { $('#jsonWrap').hidden = false; $('#jsonBox').value = txt; $('#jsonBox').select(); say('Clipboard is blocked here, so the JSON is selected below.'); }
+  });
+  $('#btnLoadNfa').addEventListener('click', () => { $('#jsonWrap').hidden = false; $('#jsonBox').value = nfaJson(); $('#jsonBox').focus(); });
+  $('#btnCloseJson').addEventListener('click', () => { $('#jsonWrap').hidden = true; });
+  $('#btnApplyJson').addEventListener('click', () => {
+    try {
+      const o = JSON.parse($('#jsonBox').value);
+      const ok = Array.isArray(o.states) && o.states.length && o.states.every(validName) && new Set(o.states).size === o.states.length &&
+        Array.isArray(o.alphabet) && o.alphabet.length && o.alphabet.every(a => typeof a === 'string' && a.length === 1 && a !== EPS) &&
+        o.states.includes(o.start) && Array.isArray(o.accept) && o.accept.every(a => o.states.includes(a)) && o.delta && typeof o.delta === 'object';
+      if (!ok) throw new Error('bad shape');
+      const delta = {};
+      for (const s of o.states) { delta[s] = {}; const row = o.delta[s] || {}; for (const sym of Object.keys(row)) { if (sym !== EPS && !o.alphabet.includes(sym)) continue; const t = [].concat(row[sym]).filter(x => o.states.includes(x)); if (t.length) delta[s][sym] = [...new Set(t)]; } }
+      S.nfa = { states: o.states, alphabet: o.alphabet, start: o.start, accept: o.accept, delta, _ver: (S.nfa._ver || 0) + 1 };
+      $('#jsonWrap').hidden = true; say('Loaded the NFA from JSON.'); recompute({ editor: true });
+    } catch (e) { say('That JSON is not a valid NFA. It needs states, alphabet (single characters), start, accept and delta.', true); }
+  });
+}
+
+/* ---------- tester ---------- */
+function acceptsNfa(str) { return [...runNFA(S.nfa, str).pop()].some(s => S.nfa.accept.includes(s)); }
+function runTest(animate) {
+  const t = S.test, str = t.str;
+  const bad = [...str].find(c => !S.nfa.alphabet.includes(c));
+  t.error = bad ? `"${bad}" is not in the alphabet {${S.nfa.alphabet.join(', ')}}.` : '';
+  if (t.error) { t.sets = []; t.path = []; t.mpath = []; t.pos = 0; t.ok = null; return; }
+  t.sets = runNFA(S.nfa, str); t.path = runDFA(S.res, str); t.mpath = S.min ? runMin(S.min, str) : [];
+  t.pos = animate ? 0 : str.length;
+  const last = t.sets[t.sets.length - 1], dst = S.res.states.find(s => s.id === t.path[t.path.length - 1]);
+  t.ok = { nfa: [...last].some(s => S.nfa.accept.includes(s)), dfa: dst ? dst.accept : null };
+}
+function stopTestPlay() { if (S.test.timer) { clearInterval(S.test.timer); S.test.timer = null; } }
+function startTest() {
+  stopTestPlay(); S.test.str = $('#testStr').value.trim();
+  runTest(true); renderTestGraphs(); renderTest();
+  if (S.test.error || !S.test.str.length) return;
+  S.test.timer = setInterval(() => {
+    S.test.pos++; renderTestGraphs(); renderTest();
+    if (S.test.pos >= S.test.str.length) stopTestPlay();
+  }, Math.max(350, S.delay * .8));
+}
+function stepTest(d) {
+  const t = S.test; if (t.error || !t.sets.length) return;
+  stopTestPlay(); t.pos = Math.max(0, Math.min(t.str.length, t.pos + d)); renderTestGraphs(); renderTest();
+}
+function renderTest() {
+  const t = S.test, note = $('#testNote');
+  renderQuick();
+  if (t.error) {
+    note.textContent = t.error; note.classList.add('warn');
+    $('#verdictRow').innerHTML = ''; $('#trace').innerHTML = ''; renderPreview(); return;
+  }
+  note.classList.remove('warn');
+  note.textContent = t.sets.length ? '' : 'Type a string and press Run.';
+  const done = t.pos >= t.str.length;
+  let v = '';
+  if (!t.sets.length) v = '';
+  else if (!done) v = `<span class="verdict wait">Reading symbol ${t.pos + 1} of ${t.str.length}…</span>`;
+  else if (t.ok) {
+    const acc = t.ok.nfa;
+    v = `<span class="verdict ${acc ? 'ok' : 'no'}">${acc ? '✓ Accepted' : '✕ Rejected'}</span><span class="agree${t.ok.dfa === acc ? '' : ' no'}" style="margin:0">${t.ok.dfa === null ? 'DFA incomplete' : t.ok.dfa === acc ? 'NFA, DFA and minimal DFA agree' : 'NFA and DFA disagree'}</span>`;
+  }
+  $('#verdictRow').innerHTML = v;
+  let h = '<thead><tr><th>#</th><th>Read</th><th>NFA states</th><th>DFA</th><th>Minimal</th></tr></thead><tbody>';
+  if (t.sets.length) for (let i = 0; i <= t.str.length; i++) {
+    const cls = i === t.pos ? 'on' : i < t.pos ? 'past' : '';
+    h += `<tr class="${cls}" style="--i:${i}"><td>${i}</td><td class="rd">${i === 0 ? 'start' : esc(t.str[i - 1])}</td><td>${esc(fmt(sortSet(S.nfa, t.sets[i])))}</td><td>${esc(t.path[i] || '–')}</td><td>${esc(t.mpath[i] || '–')}</td></tr>`;
+  }
+  $('#trace').innerHTML = h + '</tbody>';
+  renderPreview();
+}
+let prevLen = 4;
+function sampleStrings(maxLen) {
+  const out = [''];
+  for (let l = 1, lvl = ['']; l <= maxLen; l++) { const nx = []; for (const s of lvl) for (const a of S.nfa.alphabet) nx.push(s + a); out.push(...nx); lvl = nx; }
+  return out;
+}
+function renderQuick() {
+  const ys = [], ns = [];
+  for (const s of sampleStrings(Math.min(4, 5))) { if (!s) continue; (acceptsNfa(s) ? ys : ns).push(s); if (ys.length >= 4 && ns.length >= 3) break; }
+  const pick = (a, c, n) => a.slice(0, n).map(s => `<button type="button" class="${c}" data-q="${esc(s)}">${esc(s)}</button>`).join('');
+  $('#quick').innerHTML = `<span>Try:</span>${pick(ys.sort((a, b) => b.length - a.length).slice(0, 4), 'y', 4)}${pick(ns.slice(-3), 'n', 3)}<span>(green accepted, red rejected)</span>`;
+}
+function renderPreview() {
+  const k = S.nfa.alphabet.length;
+  let max = 1, total = 1 + k; while (max < 7 && total + Math.pow(k, max + 1) <= 3000) { max++; total += Math.pow(k, max); }
+  prevLen = Math.max(1, Math.min(prevLen, max));
+  const strs = sampleStrings(prevLen);
+  let agree = true; const yes = [];
+  for (const s of strs) {
+    const a = acceptsNfa(s), p = runDFA(S.res, s), st = S.res.states.find(x => x.id === p[p.length - 1]);
+    if (st && st.accept !== a) agree = false;
+    if (a) yes.push(s === '' ? 'ε' : s);
+  }
+  $('#prev').innerHTML = `<div class="card-head"><h2>Language preview</h2></div>` +
+    `<label style="font-size:12.5px;color:var(--muted)">All strings up to length <b>${prevLen}</b> <input type="range" id="prevLen" min="1" max="${max}" value="${prevLen}" aria-label="Maximum string length"></label>` +
+    `<p class="note">${yes.length} of ${strs.length} strings are accepted.</p>` +
+    `<div class="chips" style="margin-top:8px">${yes.slice(0, 60).map(s => `<span class="c y">${esc(s)}</span>`).join('') || '<span class="note">No string up to this length is accepted.</span>'}${yes.length > 60 ? `<span class="note">+${yes.length - 60} more</span>` : ''}</div>` +
+    `<p class="agree${agree ? '' : ' no'}">${agree ? `✓ NFA and DFA agree on all ${strs.length} strings` : '✕ NFA and DFA disagree on some string'}</p>`;
+}
+
+/* ---------- export ---------- */
+async function copyText(text, label) {
+  const box = $('#exportBox');
+  try { await navigator.clipboard.writeText(text); box.hidden = true; $('#tblNote').textContent = label + ' copied to the clipboard.'; }
+  catch (e) { box.hidden = false; box.value = text; box.focus(); box.select(); $('#tblNote').textContent = 'Clipboard is blocked here, so the text is selected below. Press Ctrl/Cmd+C.'; }
+}
+function dfaExport() {
+  const d = buildDfa(S.res, S.res.entries.length, S.showDead), t = {};
+  for (const x of d.trans) (t[x.from] = t[x.from] || {})[x.sym] = x.to;
+  return { d, t };
+}
+function copyTable() {
+  const { d, t } = dfaExport();
+  const lines = ['state\tnfa_set\t' + S.nfa.alphabet.join('\t')];
+  for (const s of d.states) lines.push(`${s.id === S.res.start.id ? '->' : ''}${s.accept ? '*' : ''}${s.id}\t${s.label}\t` + S.nfa.alphabet.map(a => (t[s.id] && t[s.id][a]) || '').join('\t'));
+  copyText(lines.join('\n'), 'Table');
+}
+function copyJson() {
+  const { d, t } = dfaExport();
+  copyText(JSON.stringify({ alphabet: S.nfa.alphabet, states: d.states.map(s => s.id), start: S.res.start.id, accepting: d.states.filter(s => s.accept).map(s => s.id), nfaSets: Object.fromEntries(d.states.map(s => [s.id, s.set])), transitions: t }, null, 2), 'JSON');
+}
+
+/* ---------- boot ---------- */
+function loadPreset(i) {
+  const p = clone(PRESETS[i]);
+  S.nfa = { states: p.states, alphabet: p.alphabet, start: p.start, accept: p.accept, delta: p.delta, _ver: (S.nfa ? S.nfa._ver : 0) + 1 };
+  S.test.str = p.sample || ''; $('#testStr').value = S.test.str;
+  stopTestPlay(); say(EDNOTE); recompute({ editor: true });
+}
+function syncOpts() {
+  $$('.optDead').forEach(c => c.checked = S.showDead);
+  $$('.optSets').forEach(c => c.checked = S.showSets);
+}
+function init() {
+  $('#preset').innerHTML = PRESETS.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  $('#preset').addEventListener('change', e => loadPreset(+e.target.value));
+  $('#btnClear').addEventListener('click', () => {
+    S.nfa = { states: ['q0', 'q1'], alphabet: ['a', 'b'], start: 'q0', accept: ['q1'], delta: { q0: {}, q1: {} }, _ver: (S.nfa._ver || 0) + 1 };
+    S.test.str = ''; $('#testStr').value = ''; stopTestPlay(); say('Blank NFA. Fill in the transition cells to define moves.'); recompute({ editor: true }); showView('define');
+  });
+  setupEditor();
+  $('#nav').addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (b) showView(b.dataset.view); });
+  $('#goConvert').addEventListener('click', () => showView('convert'));
+  window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.includes(v) && v !== S.view) showView(v, true); });
+  $('#cvTabs').addEventListener('click', e => { const b = e.target.closest('[data-cv]'); if (b) setCv(b.dataset.cv); });
+  $('#bFirst').addEventListener('click', () => { stopPlay(); goto(0); });
+  $('#bPrev').addEventListener('click', () => { stopPlay(); goto(S.step - 1); });
+  $('#bNext').addEventListener('click', () => { stopPlay(); if (S.cv !== 'dfa') setCv('dfa'); goto(S.step + 1); });
+  $('#bLast').addEventListener('click', () => { stopPlay(); goto(S.res.entries.length); });
+  $('#bPlay').addEventListener('click', togglePlay);
+  $('#speed').addEventListener('input', e => { S.delay = DELAYS[+e.target.value - 1]; if (S.timer) { stopPlay(); S.timer = setInterval(playTick, S.delay); renderControls(); } });
+  document.addEventListener('keydown', e => {
+    if (S.view !== 'convert' || !/^(BODY|BUTTON)$/.test(document.activeElement.tagName)) return;
+    if (e.key === 'ArrowRight') { stopPlay(); goto(S.step + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { stopPlay(); goto(S.step - 1); e.preventDefault(); }
+  });
+  document.addEventListener('change', e => {
+    if (e.target.classList.contains('optDead')) { S.showDead = e.target.checked; syncOpts(); renderView(); }
+    if (e.target.classList.contains('optSets')) { S.showSets = e.target.checked; syncOpts(); renderView(); }
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('.btnLayout')) { resetLayouts(); renderView(); }
+    const q = e.target.closest('[data-q]'); if (q) { $('#testStr').value = q.dataset.q; startTest(); }
+  });
+  const redraw = () => renderView();
+  ['svgDefN', 'svgCvN', 'svgCmpN', 'svgTsN'].forEach(id => enableDrag($('#' + id), () => S.posN, redraw));
+  ['svgCvD', 'svgCmpD', 'svgTsD'].forEach(id => enableDrag($('#' + id), () => S.posD, redraw));
+  ['svgCmpM', 'svgTsM'].forEach(id => enableDrag($('#' + id), () => S.posM, redraw));
+  $('#btnCopyTbl').addEventListener('click', copyTable);
+  $('#btnCopyJson').addEventListener('click', copyJson);
+  $('#btnRun').addEventListener('click', startTest);
+  $('#testStr').addEventListener('keydown', e => { if (e.key === 'Enter') startTest(); });
+  $('#tPrev').addEventListener('click', () => stepTest(-1));
+  $('#tNext').addEventListener('click', () => stepTest(1));
+  $('#prev').addEventListener('input', e => { if (e.target.id === 'prevLen') { prevLen = +e.target.value; renderPreview(); const r = $('#prevLen'); r && r.focus(); } });
+  $('#btnTheme').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme === 'dark' || (!root.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('nfa-theme', root.dataset.theme); } catch (e) { }
+  });
+  try { const t = localStorage.getItem('nfa-theme'); if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; } catch (e) { }
+  loadPreset(0);
+  const h = location.hash.slice(1);
+  showView(VIEWS.includes(h) ? h : 'define', true);
+}
+init();
+</script>
+</body>
+</html>

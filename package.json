@@ -1,0 +1,19 @@
+{
+  "name": "nfa-dfa-simulator",
+  "version": "1.0.0",
+  "description": "Browser-based NFA to DFA simulator: step-by-step subset construction, DFA minimisation and string testing.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "build": "node scripts/build.js",
+    "test": "node --test tests/unit/core.test.js",
+    "test:e2e": "node tests/e2e/ui.test.js",
+    "test:crosscheck": "node tests/crosscheck/xcheck.js && python3 tests/crosscheck/libcheck.py",
+    "test:all": "npm test && npm run test:e2e && npm run test:crosscheck"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  },
+  "engines": { "node": ">=20" }
+}
